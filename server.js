@@ -12,7 +12,7 @@ const urlSchema = new Schema( { original_url: String, short_url: Number } );
 // create a model from the schema
 const urlModel = mongoose.model( 'URLs', urlSchema );
 
-// connet to the database
+// connect to the database
 mongoose.connect( process.env.MONGO_URI, { useNewUrlParser: true } );
 
 // Basic Configuration
@@ -37,47 +37,48 @@ app.use( '/api/shorturl', bodyParser.urlencoded( { extended: false } ) );
 app.post( '/api/shorturl', function( request, response ) {
 
 	// validate posted url
-	dns.lookup( request.body.url, (err, address, family) => { 
 
-		if ( err == 'ENOTFOUND' ) {
-			
-			response.json( { error: 'invalid url' } );
-		}
-		else {
+	const urlRegex = '^(?:(?:http|https)://)(?:\\S+(?::\\S*)?@)?(?:(?:(?:[1-9]\\d?|1\\d\\d|2[01]\\d|22[0-3])(?:\\.(?:1?\\d{1,2}|2[0-4]\\d|25[0-5])){2}(?:\\.(?:[0-9]\\d?|1\\d\\d|2[0-4]\\d|25[0-4]))|(?:(?:[a-z\\u00a1-\\uffff0-9]+-?)*[a-z\\u00a1-\\uffff0-9]+)(?:\\.(?:[a-z\\u00a1-\\uffff0-9]+-?)*[a-z\\u00a1-\\uffff0-9]+)*(?:\\.(?:[a-z\\u00a1-\\uffff]{2,})))|localhost)(?::\\d{2,5})?(?:(/|\\?|#)[^\\s]*)?$';
+	let url = new RegExp(urlRegex, 'i');
 
-			// get all of the database entries
-			urlModel.find( {}, ( err, results ) => {
+	if ( request.body.url.length < 2083 && url.test(request.body.url) ) {
 
-				// if database is empty create the first record with the initial code
-				if ( results.length == 0 ) {
-					
+		// get all of the database entries
+		urlModel.find( {}, ( err, results ) => {
+
+			// if database is empty create the first record with the initial code
+			if ( results.length == 0 ) {
+
+				// create document instance from the model
+				const urlDocument = new urlModel( { original_url: request.body.url, short_url: 1 } );
+
+				// save the document to the database
+				urlDocument.save( ( err, data ) => {
+
+					response.json( { original_url: request.body.url, short_url: data.short_url } );
+				});
+			}
+			else {
+
+				// determine the next available code
+				urlModel.find({}).sort( { short_url: -1 } ).limit( 1 ).select( { short_url: 1 } ).exec( (err, found) => {
+
 					// create document instance from the model
-					const urlDocument = new urlModel( { original_url: request.body.url, short_url: 1 } );
+					const urlDocument = new urlModel( { original_url: request.body.url, short_url: 1 + found[0].short_url } );
 
 					// save the document to the database
 					urlDocument.save( ( err, data ) => {
 
 						response.json( { original_url: request.body.url, short_url: data.short_url } );
 					});
-				}
-				else {
-				
-					// determine the next available code
-					urlModel.find({}).sort( { short_url: -1 } ).limit( 1 ).select( { short_url: 1 } ).exec( (err, found) => {
+				});
+			}
+		});
+	}
+	else {
 
-						// create document instance from the model
-						const urlDocument = new urlModel( { original_url: request.body.url, short_url: 1 + found[0].short_url } );
-
-						// save the document to the database
-						urlDocument.save( ( err, data ) => {
-
-							response.json( { original_url: request.body.url, short_url: data.short_url } );
-						});
-					});
-				}
-			});
-		}
-	});
+		response.json( { error: 'invalid url' } );
+	}
 });
 
 // looks up a shortened url and redirects to it
@@ -85,7 +86,7 @@ app.get( '/api/shorturl/:code', ( request, response ) => {
 
 	// look up the url by index in the database
 	urlModel.find( { short_url: request.params.code }, ( err, data ) => {
-		
+
 		// redirect to the found url
 		response.redirect( data[0].original_url );
 	});
