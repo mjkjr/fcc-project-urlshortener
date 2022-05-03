@@ -87,7 +87,7 @@ app.get( '/api/shorturl/:code', ( request, response ) => {
 	urlModel.find( { short_url: request.params.code }, ( err, data ) => {
 		
 		// redirect to the found url
-		response.redirect( 'http://' + data[0].original_url );
+		response.redirect( data[0].original_url );
 	});
 });
 
